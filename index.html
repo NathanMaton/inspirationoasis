@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snowy Field Walk</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #instructions {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            background-color: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #toggleMode {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            background-color: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">Use WASD to move, mouse to look around, N for next quote</div>
+    <div id="toggleMode">Click to toggle mouse look mode</div>
+    <audio id="backgroundMusic" loop>
+        <source src="audio.mp3" type="audio/mpeg">
+        Your browser does not support the audio element.
+    </audio>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FontLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/geometries/TextGeometry.js"></script>
+    <script>
+        // Add this at the beginning of your script
+        const quotes = [
+            { text: "Your job is to keep yourself inspired.", author: "Paul Bennet" },
+            { text: "The best way to find yourself is to lose yourself in the service of others", author: "Gandhi" },
+            { text: "You must be the change you wish to see in the world", author: "Gandhi" },
+            { text: "You must never be fearful about what you are doing when it is right", author: "Rosa Parks" },
+            { text: "Peace begins with a smile", author: "Mother Teresa" },
+            { text: "Whatever you choose to do, leave tracks. That means don't do it just for yourself. You will want to leave the world a little better for your having lived", author: "Ruth Bader Ginsburg" },
+            { text: "Not all of us can do great things. But we can do small things with great love", author: "Mother Teresa" }
+        ];
+
+        let currentQuoteIndex = 0;
+        let quoteObject;
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Ground with snow texture
+        const textureLoader = new THREE.TextureLoader();
+        const snowTexture = textureLoader.load('snow_texture/snow_texture_COLOR.jpg');
+        const snowNormalMap = textureLoader.load('snow_texture/snow_texture_NormalGL.jpg'); // or NormalDX if that's what you have
+        const snowDisplacementMap = textureLoader.load('snow_texture/snow_texture_Displacement.jpg');
+
+        snowTexture.wrapS = THREE.RepeatWrapping;
+        snowTexture.wrapT = THREE.RepeatWrapping;
+        snowTexture.repeat.set(20, 20); // Adjust repeat as needed
+
+        const groundGeometry = new THREE.PlaneGeometry(1000, 1000, 128, 128); // Added more segments for displacement
+        const groundMaterial = new THREE.MeshStandardMaterial({ 
+            map: snowTexture,
+            normalMap: snowNormalMap,
+            displacementMap: snowDisplacementMap,
+            displacementScale: 2, // Adjust this value to control the intensity of the displacement
+            color: 0xffffff,  // White color
+            roughness: 0.8,   // Adjust as needed
+            metalness: 0.1,   // Keep low metalness
+            normalScale: new THREE.Vector2(1, 1) // Adjust normal intensity as needed
+        });
+
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        scene.add(ground);
+
+        // Optimized snow effect
+        const snowflakeTexture = textureLoader.load('snow_texture/snowflake.jpg');
+        const snowMaterial = new THREE.PointsMaterial({
+            size: 4,
+            map: snowflakeTexture,
+            blending: THREE.AdditiveBlending,
+            depthTest: false,
+            transparent: true,
+            opacity: 0.7
+        });
+
+        const snowGeometry = new THREE.BufferGeometry();
+        const snowflakeCount = 10000; // Reduced count
+        const positions = new Float32Array(snowflakeCount * 3);
+
+        for (let i = 0; i < snowflakeCount * 3; i += 3) {
+            positions[i] = Math.random() * 1000 - 500;
+            positions[i + 1] = Math.random() * 500;
+            positions[i + 2] = Math.random() * 1000 - 500;
+        }
+
+        snowGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const snowSystem = new THREE.Points(snowGeometry, snowMaterial);
+        scene.add(snowSystem);
+
+        // Camera position
+        camera.position.y = 1.6; // Average human height
+
+        // Movement
+        let moveForward = false;
+        let moveBackward = false;
+        let moveLeft = false;
+        let moveRight = false;
+
+        const onKeyDown = function (event) {
+            switch (event.code) {
+                case 'KeyW': moveForward = true; break;
+                case 'KeyS': moveBackward = true; break;
+                case 'KeyA': moveLeft = true; break;
+                case 'KeyD': moveRight = true; break;
+                case 'KeyN':
+                    currentQuoteIndex = (currentQuoteIndex + 1) % quotes.length;
+                    displayQuote(quotes[currentQuoteIndex].text, quotes[currentQuoteIndex].author);
+                    break;
+            }
+        };
+
+        const onKeyUp = function (event) {
+            switch (event.code) {
+                case 'KeyW': moveForward = false; break;
+                case 'KeyS': moveBackward = false; break;
+                case 'KeyA': moveLeft = false; break;
+                case 'KeyD': moveRight = false; break;
+            }
+        };
+
+        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('keyup', onKeyUp);
+
+        // Mouse look
+        let mouseX = 0;
+        let mouseY = 0;
+        let isMouseLookActive = true;
+
+        const onMouseMove = function (event) {
+            if (isMouseLookActive) {
+                mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+                mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+            }
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+
+        document.addEventListener('click', function() {
+            isMouseLookActive = !isMouseLookActive;
+            document.body.style.cursor = isMouseLookActive ? 'none' : 'default';
+            document.getElementById('toggleMode').textContent = isMouseLookActive ? 
+                'Click to disable mouse look' : 'Click to enable mouse look';
+        });
+
+        // Play music on first interaction
+        document.addEventListener('click', function() {
+            const backgroundMusic = document.getElementById('backgroundMusic');
+            backgroundMusic.play();
+        }, { once: true });
+
+        // Add this function to create and display quotes
+        function displayQuote(quoteText, authorText) {
+            if (quoteObject) {
+                scene.remove(quoteObject);
+            }
+
+            const loader = new THREE.FontLoader();
+            loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function(font) {
+                const baseSize = 2;
+                const maxLength = 100;
+                const fontSize = Math.max(baseSize * (maxLength / Math.max(quoteText.length, maxLength)), 0.5);
+                
+                const quoteGeometry = new THREE.TextGeometry(quoteText, {
+                    font: font,
+                    size: fontSize,
+                    height: fontSize * 0.1,
+                    curveSegments: 12,
+                    bevelEnabled: false
+                });
+                const authorGeometry = new THREE.TextGeometry("- " + authorText, {
+                    font: font,
+                    size: fontSize * 0.5,
+                    height: fontSize * 0.05,
+                    curveSegments: 12,
+                    bevelEnabled: false
+                });
+
+                const textMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff });
+                const quoteMesh = new THREE.Mesh(quoteGeometry, textMaterial);
+                const authorMesh = new THREE.Mesh(authorGeometry, textMaterial);
+
+                quoteGeometry.computeBoundingBox();
+                const quoteWidth = quoteGeometry.boundingBox.max.x - quoteGeometry.boundingBox.min.x;
+                quoteMesh.position.set(-quoteWidth / 2, 10, -30); // Moved closer to camera
+
+                authorGeometry.computeBoundingBox();
+                const authorWidth = authorGeometry.boundingBox.max.x - authorGeometry.boundingBox.min.x;
+                authorMesh.position.set(-authorWidth / 2, 8, -30); // Positioned below quote
+
+                quoteObject = new THREE.Group();
+                quoteObject.add(quoteMesh);
+                quoteObject.add(authorMesh);
+
+                // Add a point light to illuminate the text
+                const textLight = new THREE.PointLight(0xffffff, 1, 100);
+                textLight.position.set(0, 10, -25);
+                quoteObject.add(textLight);
+
+                scene.add(quoteObject);
+            });
+        }
+
+        // Display the first quote
+        displayQuote(quotes[currentQuoteIndex].text, quotes[currentQuoteIndex].author);
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Move snowflakes
+            const positions = snowSystem.geometry.attributes.position.array;
+            for (let i = 1; i < positions.length; i += 3) {
+                positions[i] -= 1; // Falling speed
+                if (positions[i] < 0) {
+                    positions[i] = 500;
+                }
+            }
+            snowSystem.geometry.attributes.position.needsUpdate = true;
+
+            // Rotate snowflakes
+            snowSystem.rotation.y += 0.001;
+
+            // Move camera
+            const speed = 0.1;
+            if (moveForward) camera.translateZ(-speed);
+            if (moveBackward) camera.translateZ(speed);
+            if (moveLeft) camera.translateX(-speed);
+            if (moveRight) camera.translateX(speed);
+
+            // Rotate camera based on mouse position only when mouse look is active
+            if (isMouseLookActive) {
+                camera.rotation.y = -mouseX * Math.PI;
+                camera.rotation.x = -mouseY * Math.PI / 4;
+            }
+
+            if (quoteObject) {
+                quoteObject.position.y = Math.sin(Date.now() * 0.001) * 1 + 11; // Reduced oscillation
+                quoteObject.rotation.y = Math.sin(Date.now() * 0.0005) * 0.05; // Reduced rotation
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', function () {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Fog to create blizzard effect
+        scene.fog = new THREE.FogExp2(0xe0e0e0, 0.0025); // Lighter fog color
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xccccff, 0.4); // Slight blue tint
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+    </script>
+</body>
+</html>
