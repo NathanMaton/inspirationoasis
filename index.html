@@ -91,18 +91,15 @@
         scene.add(ground);
 
         // Optimized snow effect
-        const snowflakeTexture = textureLoader.load('snow_texture/snowflake.jpg');
         const snowMaterial = new THREE.PointsMaterial({
-            size: 4,
-            map: snowflakeTexture,
-            blending: THREE.AdditiveBlending,
-            depthTest: false,
+            color: 0xffffff,
+            size: 0.5,
             transparent: true,
-            opacity: 0.7
+            opacity: 0.8
         });
 
         const snowGeometry = new THREE.BufferGeometry();
-        const snowflakeCount = 10000; // Reduced count
+        const snowflakeCount = 50000; // Increased count
         const positions = new Float32Array(snowflakeCount * 3);
 
         for (let i = 0; i < snowflakeCount * 3; i += 3) {
@@ -256,7 +253,8 @@
             // Move snowflakes
             const positions = snowSystem.geometry.attributes.position.array;
             for (let i = 1; i < positions.length; i += 3) {
-                positions[i] -= 1; // Falling speed
+                positions[i] -= 0.5; // Falling speed
+                positions[i + 0] += Math.sin(Date.now() * 0.001 + i) * 0.1; // Horizontal movement
                 if (positions[i] < 0) {
                     positions[i] = 500;
                 }
