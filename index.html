@@ -54,8 +54,8 @@
             { text: "Not all of us can do great things. But we can do small things with great love", author: "Mother Teresa" }
         ];
 
-        let currentQuoteIndex = 0;
-        let quoteObject;
+        let quoteObjects = [null, null, null, null];
+        let currentQuoteIndices = [0, 1, 2, 3];
 
         // Scene setup
         const scene = new THREE.Scene();
@@ -131,8 +131,12 @@
                 case 'KeyA': moveLeft = true; break;
                 case 'KeyD': moveRight = true; break;
                 case 'KeyN':
-                    currentQuoteIndex = (currentQuoteIndex + 1) % quotes.length;
-                    displayQuote(quotes[currentQuoteIndex].text, quotes[currentQuoteIndex].author);
+                    currentQuoteIndices = currentQuoteIndices.map(index => (index + 1) % quotes.length);
+                    // Ensure no duplicates
+                    while (new Set(currentQuoteIndices).size !== currentQuoteIndices.length) {
+                        currentQuoteIndices = currentQuoteIndices.map(index => (index + 1) % quotes.length);
+                    }
+                    displayQuotes();
                     break;
             }
         };
@@ -177,59 +181,73 @@
         }, { once: true });
 
         // Add this function to create and display quotes
-        function displayQuote(quoteText, authorText) {
-            if (quoteObject) {
-                scene.remove(quoteObject);
-            }
-
+        function displayQuotes() {
             const loader = new THREE.FontLoader();
             loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function(font) {
-                const baseSize = 2;
-                const maxLength = 100;
-                const fontSize = Math.max(baseSize * (maxLength / Math.max(quoteText.length, maxLength)), 0.5);
-                
-                const quoteGeometry = new THREE.TextGeometry(quoteText, {
-                    font: font,
-                    size: fontSize,
-                    height: fontSize * 0.1,
-                    curveSegments: 12,
-                    bevelEnabled: false
+                const positions = [
+                    { x: 0, z: -30, rotation: 0 },          // Front
+                    { x: 0, z: 30, rotation: Math.PI },     // Back
+                    { x: -30, z: 0, rotation: Math.PI / 2 },  // Left
+                    { x: 30, z: 0, rotation: -Math.PI / 2 }   // Right
+                ];
+
+                positions.forEach((pos, index) => {
+                    if (quoteObjects[index]) {
+                        scene.remove(quoteObjects[index]);
+                    }
+
+                    const quote = quotes[currentQuoteIndices[index]];
+                    const baseSize = 2;
+                    const maxLength = 100;
+                    const fontSize = Math.max(baseSize * (maxLength / Math.max(quote.text.length, maxLength)), 0.5);
+                    
+                    const quoteGeometry = new THREE.TextGeometry(quote.text, {
+                        font: font,
+                        size: fontSize,
+                        height: fontSize * 0.1,
+                        curveSegments: 12,
+                        bevelEnabled: false
+                    });
+                    const authorGeometry = new THREE.TextGeometry("- " + quote.author, {
+                        font: font,
+                        size: fontSize * 0.5,
+                        height: fontSize * 0.05,
+                        curveSegments: 12,
+                        bevelEnabled: false
+                    });
+
+                    const textMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff });
+                    const quoteMesh = new THREE.Mesh(quoteGeometry, textMaterial);
+                    const authorMesh = new THREE.Mesh(authorGeometry, textMaterial);
+
+                    quoteGeometry.computeBoundingBox();
+                    const quoteWidth = quoteGeometry.boundingBox.max.x - quoteGeometry.boundingBox.min.x;
+                    quoteMesh.position.set(-quoteWidth / 2, 2, 0);
+
+                    authorGeometry.computeBoundingBox();
+                    const authorWidth = authorGeometry.boundingBox.max.x - authorGeometry.boundingBox.min.x;
+                    authorMesh.position.set(-authorWidth / 2, 0, 0);
+
+                    quoteObjects[index] = new THREE.Group();
+                    quoteObjects[index].add(quoteMesh);
+                    quoteObjects[index].add(authorMesh);
+
+                    // Position and rotate the entire group
+                    quoteObjects[index].position.set(pos.x, 10, pos.z);
+                    quoteObjects[index].rotation.y = pos.rotation;
+
+                    // Add a point light to illuminate the text
+                    const textLight = new THREE.PointLight(0xffffff, 1, 100);
+                    textLight.position.set(0, 0, -5);
+                    quoteObjects[index].add(textLight);
+
+                    scene.add(quoteObjects[index]);
                 });
-                const authorGeometry = new THREE.TextGeometry("- " + authorText, {
-                    font: font,
-                    size: fontSize * 0.5,
-                    height: fontSize * 0.05,
-                    curveSegments: 12,
-                    bevelEnabled: false
-                });
-
-                const textMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff });
-                const quoteMesh = new THREE.Mesh(quoteGeometry, textMaterial);
-                const authorMesh = new THREE.Mesh(authorGeometry, textMaterial);
-
-                quoteGeometry.computeBoundingBox();
-                const quoteWidth = quoteGeometry.boundingBox.max.x - quoteGeometry.boundingBox.min.x;
-                quoteMesh.position.set(-quoteWidth / 2, 10, -30); // Moved closer to camera
-
-                authorGeometry.computeBoundingBox();
-                const authorWidth = authorGeometry.boundingBox.max.x - authorGeometry.boundingBox.min.x;
-                authorMesh.position.set(-authorWidth / 2, 8, -30); // Positioned below quote
-
-                quoteObject = new THREE.Group();
-                quoteObject.add(quoteMesh);
-                quoteObject.add(authorMesh);
-
-                // Add a point light to illuminate the text
-                const textLight = new THREE.PointLight(0xffffff, 1, 100);
-                textLight.position.set(0, 10, -25);
-                quoteObject.add(textLight);
-
-                scene.add(quoteObject);
             });
         }
 
         // Display the first quote
-        displayQuote(quotes[currentQuoteIndex].text, quotes[currentQuoteIndex].author);
+        displayQuotes();
 
         // Animation loop
         function animate() {
@@ -261,10 +279,12 @@
                 camera.rotation.x = -mouseY * Math.PI / 4;
             }
 
-            if (quoteObject) {
-                quoteObject.position.y = Math.sin(Date.now() * 0.001) * 1 + 11; // Reduced oscillation
-                quoteObject.rotation.y = Math.sin(Date.now() * 0.0005) * 0.05; // Reduced rotation
-            }
+            quoteObjects.forEach((quoteObject, index) => {
+                if (quoteObject) {
+                    quoteObject.position.y = Math.sin(Date.now() * 0.001 + index) * 1 + 11; // Offset sine wave for each quote
+                    quoteObject.rotation.y = Math.sin(Date.now() * 0.0005 + index) * 0.05;
+                }
+            });
 
             renderer.render(scene, camera);
         }
